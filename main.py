@@ -1,203 +1,17 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
-
-from llama_index.llms.huggingface import HuggingFaceLLM
-from llama_index.core.agent.workflow import ReActAgent
 from llama_index.core.agent.workflow import AgentWorkflow
 from llama_index.core.agent.workflow import (
-    AgentInput,
     AgentOutput,
     ToolCall,
     ToolCallResult,
-    AgentStream
 )
+from agents.file_viewer_agent import file_viewer_agent
+from agents.write_agent import write_agent
+from agents.review_agent import review_agent
+from agents.search_agent import search_agent
 
 import asyncio
-import argparse
-from configs import MODEL_PATH
-from tools import (
-    extract_files_from_directory,
-    record_notes,
-    write_readme,
-    review_readme,
-    search_web
-)
 
-
-
-llm = HuggingFaceLLM(
-    model_name=MODEL_PATH,
-    tokenizer_name=MODEL_PATH,
-    max_new_tokens=8192,
-    generate_kwargs={"temperature": 0.8, "top_k": 100, "top_p": 0.95},
-    device_map="auto",
-)
-
-
-file_viewer_agent = ReActAgent(
-    name="FileViewerAgnet",
-    description="Extracts content from project files and writes notes.",
-    tools=[extract_files_from_directory, record_notes],
-    system_prompt = """You are FileViewerAgent, a technical documentation assistant.
-    
-    Your role is to explore the content of a software project directory, read and interpret files,
-    and write structured notes that summarize what each file or module does. These notes will be used 
-    by another agent to generate a README file.
-
-    You should:
-
-    1. Recursively scan all files in the given directory.
-    2. Read content from code files (.py, .ipynb), documentation (.md, .txt), and config files (.json).
-    3. For each file:
-    - Identify its purpose (e.g., main script, config, utility, model).
-    - Describe what the file does in clear, human-readable form.
-    - Extract function/class names with brief descriptions if possible.
-    4. Group notes by file or module.
-    5. Use markdown-style formatting for the notes (e.g., ### filename.py).
-    6. Keep notes concise, but informative enough for someone unfamiliar with the codebase.
-
-    Example format:
-
-    ### main.py
-    - This is the main entry point of the application.
-    - It initializes the agent workflow and starts the README generation.
-    - Imports the following modules: `agents.file_viewer_agent`, `workflow`, etc.
-
-    ### config.json
-    - Contains API keys and model configuration paths.
-
-    Avoid rewriting the entire file content. Focus on interpretation and summarization.
-
-    Once you've completed your notes, pass control to the WriteAgent.""",
-    llm=llm,
-    can_handoff_to=["WriteAgent"]
-)
-
-
-
-write_agent = ReActAgent(
-    name="WriteAgent",
-    description="Writes a structured README.md from notes.",
-    tools=[write_readme],
-    system_prompt = """You are WriteAgent, a technical writer specialized in creating high-quality README files for software projects.
-    
-    Your goal is to generate a clear, complete, and well-structured README.md file based on notes created by FileViewerAgent.
-    Those notes describe the files, structure, and purpose of the project directory.
-
-    Your README should serve as the first entry point for developers or users who are new to the project. 
-    It must help them quickly understand what the project is, how to install and use it, and how to contribute.
-
-    ### You must follow these writing guidelines:
-
-    1. **Clarity & Readability**: Use professional, concise, and beginner-friendly language.
-    2. **Structure**: Include the following sections unless instructed otherwise:
-    - **Project Title**: A short, clear title.
-    - **Overview / Description**: What this project does, its purpose, and key features.
-    - **Installation Instructions**: Step-by-step setup guide (e.g., using pip, conda, etc.).
-    - **Usage**: How to run the project, use its features, or execute scripts.
-    - **Features**: List of core capabilities or components.
-    - **Folder Structure** (optional): If helpful, explain the project layout based on notes.
-    - **Contributing**: (Optional) Instructions for developers who want to improve the project.
-    - **License**: State the license if provided in the project.
-    3. **Use Markdown formatting**: Use headings, bullet points, and code blocks where appropriate.
-    4. **Avoid hallucination**: Only write content grounded in the research notes. Do not invent features or instructions.
-    5. **Be informative yet concise**: Avoid overly generic or verbose content.
-
-    Once the README is written, hand it off to the ReviewAgent for feedback.""",
-    llm=llm,
-    can_handoff_to=["ReviewAgent", "SearchAgent"]
-)
-
-
-
-review_agent = ReActAgent(
-    name="ReviewAgent",
-    description="Reviews the README and gives constructive feedback.",
-    tools=[review_readme],
-    system_prompt = """You are ReviewAgent, a technical reviewer responsible for assessing the quality of README.md files generated by WriteAgent.
-    
-    Your primary role is to review the generated README based on completeness, clarity, technical accuracy, and helpfulness for developers or users who are new to the project.
-
-    ### You should analyze the following aspects:
-
-    1. **Structure**:
-    - Does the README follow a logical and professional structure?
-    - Are all key sections present? (Title, Overview, Installation, Usage, Features, etc.)
-
-    2. **Clarity**:
-    - Is the writing clear and concise?
-    - Is the language beginner-friendly yet technically accurate?
-
-    3. **Content Coverage**:
-    - Are important features of the project included and explained?
-    - Are instructions grounded in actual functionality from the notes?
-
-    4. **Markdown Formatting**:
-    - Are headers, lists, and code blocks used appropriately?
-
-    5. **Missing Information**:
-    - Is there anything missing or vague (e.g. installation steps, unclear usage, no examples)?
-
-    6. **Consistency with Notes**:
-    - Is all information based on the original notes provided by FileViewerAgent?
-    - Avoid hallucinated content not backed by the notes.
-
-    ### Your Output
-
-    - If the README is good, say it is approved and explain briefly why.
-    - If improvements are needed, write clear and constructive feedback for WriteAgent.
-    - Feedback should be structured, actionable, and easy to apply.
-    - If more context is needed, you may hand off to SearchAgent for external information gathering.
-
-    After providing your review, always hand off control to WriteAgent (or SearchAgent if needed).""",
-    llm=llm,
-    can_handoff_to=["WriteAgent", "SearchAgent"]
-)
-
-
-search_agent = ReActAgent(
-    name="SearchAgent",
-    description="Performs external web search to support README generation.",
-    tools=[search_web],
-    system_prompt = """You are SearchAgent, a specialized research assistant responsible for retrieving accurate and relevant external information to support README generation.
-    
-    Your role is activated only when ReviewAgent or WriteAgent determines that additional context is required — such as when a term, library, tool, or concept used in the project is unclear, missing, or insufficiently explained in the provided notes.
-
-    You will be given a natural language query, and you must search the web using a reliable search tool to retrieve a concise and helpful summary.
-
-    ### Your responsibilities include:
-
-    1. **Clarifying Concepts**:
-    - Look up technologies, libraries, methods, or acronyms used in the project.
-    - Summarize their purpose in simple, professional terms.
-
-    2. **Filling Gaps**:
-    - Find missing details for README sections (e.g. usage examples, configuration instructions) if notes or code do not provide enough context.
-
-    3. **Supporting Feedback**:
-    - If ReviewAgent requested specific data (e.g. a library's purpose), make sure to return exactly what was asked for.
-
-    4. **Answer Formatting**:
-    - Provide the answer in clean markdown.
-    - Be concise but informative (2–4 sentences is ideal).
-    - Do not fabricate information — always base your response on credible search results.
-
-    5. **Context Awareness**:
-    - Always assume you are working to support the WriteAgent.
-    - Do not attempt to rewrite the README yourself.
-    - After your search results are returned, hand off to WriteAgent for incorporation into the README.
-
-    Example:
-
-    Query: "What is FastAPI?"
-    Answer:
-    **FastAPI** is a modern, high-performance web framework for building APIs with Python. It is based on Python type hints and built on top of Starlette and Pydantic, making it easy to write robust, fast, and clean web applications.
-
-    Only respond with factual and well-sourced summaries.
-    After completing the search, always hand off to WriteAgent.""",
-    llm=llm,
-    can_handoff_to=["WriteAgent"]
-)
 
 
 
@@ -207,13 +21,19 @@ agent_workflow = AgentWorkflow(
     initial_state={
         "notes": {},
         "readme": "",
-        "feedback": ""
+        "feedback": "Feedback required."
     }
 )
 
 
 async def main(project_dir_path):
-    user_msg = f"""Analyze the following project directory and generate a professional README.md file: {project_dir_path}"""
+    user_msg = (
+        f"Analyze the following project directory: {project_dir_path}. "
+        "Generate a professional README.md file based on the analysis. "
+        "If a README.md file already exists, compare its current contents with the summary of the project's files, "
+        "and incorporate any missing or updated information into the README. "
+        "Ensure that the final README clearly reflects any previous valuable content along with new updates."
+    )
     print("\n📂 Starting multi-agent README generation workflow...\n")
     handler = agent_workflow.run(user_msg=user_msg)
 
@@ -257,9 +77,5 @@ async def main(project_dir_path):
 
 
 if __name__=="__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--path", required=True, type=str, help="README를 작성할 프로젝트 경로")
-
-    args = parser.parse_args()
-
+    from cli import args
     asyncio.run(main(args.path))
