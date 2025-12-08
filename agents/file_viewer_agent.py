@@ -1,13 +1,22 @@
+import os
+import yaml
 from llama_index.core.agent.workflow import ReActAgent
-from model import llm
+from model import load_llm_model
 from tools.file_viewer_tools import get_directory_structure, read_file, record_notes
-from prompts import FILE_VIEWER_AGENT_SYSTEM_PROMPT
+
+
+agent_system_prompt_path = os.path.join(os.path.dirname(__file__), "../templates/agent_system_prompt.yaml")
+with open(agent_system_prompt_path, 'r', encoding='utf-8') as f:
+    agent_system_prompt = yaml.safe_load(f)
+
+file_viewer_llm = load_llm_model(temperature=0.1, top_p=0.1, max_tokens=8192)
+
 
 file_viewer_agent = ReActAgent(
     name="FileViewerAgent",
-    description="Extracts content from project files and writes notes.",
+    description="Analyzes the project directory and source files to produce structured notes for README generation.",
     tools=[get_directory_structure, read_file, record_notes],
-    system_prompt = FILE_VIEWER_AGENT_SYSTEM_PROMPT,
-    llm=llm,
-    can_handoff_to=["WriteAgent"]
+    system_prompt=agent_system_prompt["FileViewerAgent"],
+    llm=file_viewer_llm,
+    can_handoff_to=["SearchAgent", "WriteAgent"],
 )

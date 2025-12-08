@@ -1,119 +1,150 @@
-import os
-import pathspec
+from pathlib import Path
+from typing import Dict, Any, List
+from llama_index.core.tools import FunctionTool
 from llama_index.core.workflow import Context
 
-async def get_directory_structure(directory_path: str, root: str = None) -> dict:
+EXCLUDED_DIRS = {
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".venv",
+    "venv",
+    "env",
+    "build",
+    "dist",
+    "node_modules",
+    ".git",
+    ".github",
+}
+
+def _get_directory_structure(root_path: str) -> Dict[str, Any]:
     """
-    Recursively scans the given project directory using os.listdir and returns
-    a nested dictionary representing the directory structure. It excludes:
-    - Hidden files and directories (names starting with a dot)
-    - Directories named '__pycache__'
-    - Files/directories that match the patterns in the .gitignore file located at the project root
-    
-    Args:
-        directory_path (str): The current directory to scan.
-        root (str): The project root against which .gitignore patterns are evaluated.
-                    On the first call, if None, it is set to directory_path.
-        
-    Returns:
-        dict: A nested dictionary where keys are directory names and a special key "files"
-              lists the files directly contained in that directory.
-              
-    Example output:
-    {
-        "src": {
-            "models": {
-                "files": ["model.py"]
-            },
-            "files": ["main.py", "utils.py"]
-        },
-        "files": ["setup.py", "requirements.txt"]
-    }
+    Recursively scan the directory tree starting at root_path,
+    skipping unnecessary folders such as __pycache__, .git, etc.
     """
-    if root is None:
-        root = directory_path
+    root = Path(root_path).resolve()
 
-    # Load .gitignore patterns from the root (if available)
-    gitignore_file = os.path.join(root, ".gitignore")
-    spec = None
-    if os.path.exists(gitignore_file):
-        try:
-            with open(gitignore_file, "r", encoding="utf-8", errors="ignore") as f:
-                patterns = f.read().splitlines()
-            spec = pathspec.PathSpec.from_lines("gitwildmatch", patterns)
-        except Exception as e:
-            # .gitignore 읽기 실패 시 무시하고 진행할 수 있습니다.
-            spec = None
+    def _walk(dir_path: Path) -> Dict[str, Any]:
+        dirs: List[Dict[str, Any]] = []
+        files: List[str] = []
 
-    structure = {}
-    files_list = []
-    
-    try:
-        items = os.listdir(directory_path)
-    except Exception as e:
-        return {"error": f"Error accessing directory: {e}"}
-    
-    for item in items:
-        # Skip hidden items
-        if item.startswith("."):
-            continue
+        for p in dir_path.iterdir():
 
-        # Calculate the relative path from the project root
-        relative_item = os.path.relpath(os.path.join(directory_path, item), root)
-
-        # If .gitignore patterns exist and the item matches, skip it.
-        if spec and spec.match_file(relative_item):
-            continue
-
-        full_path = os.path.join(directory_path, item)
-        if os.path.isdir(full_path):
-            if item == '__pycache__':
+            # ------ ⛔ 불필요한 디렉토리 제외 ------
+            if p.is_dir() and p.name in EXCLUDED_DIRS:
                 continue
-            structure[item] = await get_directory_structure(full_path, root)
-        else:
-            files_list.append(item)
-    
-    if files_list:
-        structure["files"] = files_list
-    return structure
 
+            # 숨김 폴더 자동 제외 (.으로 시작하는 폴더)
+            if p.name.startswith(".") and p.is_dir():
+                continue
+            # ------------------------------------
 
-async def read_file(project_root: str, relative_file_path: str) -> str:
-    """
-    Reads the content of the file located at the given relative file path within the project.
+            if p.is_dir():
+                dirs.append(_walk(p))
+            else:
+                files.append(p.name)
 
-    Args:
-        project_root (str): The base directory (root) of the project.
-        relative_file_path (str): The file's path relative to the project root.
-        
-    Returns:
-        str: The content of the file, or an error message in case of failure.
-        
-    Example:
-        If project_root is "/path/to/project" and relative_file_path is
-        "function_calling/openai/functions.py", then the file is read from:
-        "/path/to/project/function_calling/openai/functions.py".
-    """
-    full_path = os.path.join(project_root, relative_file_path)
+        return {
+            "path": str(dir_path),
+            "dirs": dirs,
+            "files": files,
+        }
+
+    return _walk(root)
+
+def _read_file(file_path: str, max_chars: int = 8000) -> str:
+    p = Path(file_path)
+
+    # ✅ README.md는 읽지 않도록 차단 (대소문자 무시)
+    if p.name.lower() == "readme.md":
+        return "[SKIPPED] README.md is excluded from FileViewerAgent file reading."
+
+    if not p.exists():
+        return f"[ERROR] File not found: {file_path}"
+
     try:
-        with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read()
-        return content
+        content = p.read_text(encoding="utf-8", errors="ignore")
     except Exception as e:
-        return f"Error reading file: {e}"
+        return f"[ERROR] Failed to read file {file_path}: {e}"
+
+    if len(content) > max_chars:
+        return content[:max_chars] + "\n\n[TRUNCATED]"
+    return content
+
+async def _record_notes(ctx: Context, notes: str, notes_title: str = "project_overview") -> str:
+    async with ctx.store.edit_state() as ctx_state:
+        state = ctx_state["state"]
+
+        if "file_viewer_notes" not in state:
+            state["file_viewer_notes"] = {}
+
+        state["file_viewer_notes"][notes_title] = notes
+
+    return "Notes successfully recorded."
 
 
 
-async def record_notes(ctx: Context, notes: str, title: str) -> str:
-    """
-    Stores extracted and summarized notes into the shared state context under a given title.
-    
-    This tool helps the agent to save its analysis of the project files, which will be 
-    used by other agents (like the WriteAgent) to generate meaningful documentation.
-    
-    Input should include both the notes content and the title to be saved under.
-    """
-    state = await ctx.get("state")
-    state.setdefault("notes", {})[title] = notes
-    await ctx.set("state", state)
-    return "Notes recorded."
+# ==============================================================================================================
+get_directory_structure = FunctionTool.from_defaults(
+    fn=_get_directory_structure,
+    name="get_directory_structure",
+    description=(
+        "Recursively scan the given directory and return the full folder/file structure, "
+        "excluding unnecessary system/cache folders such as '__pycache__', '.git', '.venv', etc.\n\n"
+        "This tool is used by the FileViewerAgent as the FIRST step to understand the overall project layout. "
+        "Hidden folders and typical build/cache folders are automatically ignored so that the agent focuses "
+        "only on meaningful project code.\n\n"
+        "Args:\n"
+        "  root_path (str): The directory path to scan.\n\n"
+        "Returns:\n"
+        "  dict: A JSON-like mapping containing directories and files discovered under the given path.\n"
+    ),
+)
+
+
+read_file = FunctionTool.from_defaults(
+    fn=_read_file,
+    name="read_file",
+    description=(
+        "Read and return the content of a given file as plain UTF-8 text, "
+        "except for 'README.md', which is intentionally skipped because it is the "
+        "target document to be (re)generated.\n\n"
+        "This tool is primarily used by the FileViewerAgent to inspect key source files such as "
+        "entrypoints (e.g., `main.py`, `app.py`), core modules, configuration files, or initialization scripts. "
+        "It is especially important when analyzing a project’s architecture, identifying business logic, "
+        "understanding dependency patterns, or extracting execution flows from code.\n\n"
+        "If the file is very large, the text will be truncated to avoid overwhelming the LLM. "
+        "The truncated indicator `[TRUNCATED]` will be appended so the agent knows additional content exists.\n\n"
+        "Args:\n"
+        "  file_path (str): Path to the file to read.\n"
+        "  max_chars (int, optional): Maximum characters to return. Defaults to 8000.\n\n"
+        "Returns:\n"
+        "  str: The text content of the file, a skip message for README.md, or an error message if reading fails.\n"
+    ),
+)
+
+
+record_notes = FunctionTool.from_defaults(
+    fn=_record_notes,
+    name="record_notes",
+    description=(
+        "Store structured project-analysis notes into the workflow state for later use by other agents.\n\n"
+        "This tool should be invoked AFTER the FileViewerAgent completes its analysis of the project.\n\n"
+        "The stored notes may include:\n"
+        "  - Directory structure interpretation\n"
+        "  - Key modules and their responsibilities\n"
+        "  - Entrypoints and execution flow\n"
+        "  - Configuration or environment dependencies\n"
+        "  - Relationships between files or modules\n"
+        "  - Any inferred insights that support README generation\n\n"
+        "These notes will be consumed by downstream agents such as SearchAgent (for enrichment), "
+        "WriteAgent (for README drafting), and ReviewAgent (for validation). "
+        "This tool ensures that multi-agent workflows share a consistent understanding of the project.\n\n"
+        "Args:\n"
+        "  ctx (Context): LlamaIndex workflow context; required for editing workflow state.\n"
+        "  notes (str): The full text of the analysis to store.\n"
+        "  notes_title (str, optional): A category or label for the notes. Defaults to 'project_overview'.\n\n"
+        "Returns:\n"
+        "  str: A confirmation message indicating that notes were saved successfully.\n"
+    ),
+)
