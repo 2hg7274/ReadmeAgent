@@ -1,69 +1,73 @@
 # ReadmeAgent
 
-## 프로젝트 소개
-ReadmeAgent는 **멀티‑에이전트 워크플로우**를 활용해 프로젝트 디렉터리를 자동으로 분석하고, 최신 기술 정보를 웹 검색으로 수집한 뒤, 한국어로 고품질 README를 자동 생성·검수하는 도구입니다. 주요 흐름은 다음과 같습니다.
+## 📖 프로젝트 소개
+ReadmeAgent는 **AI 기반 자동 README 생성 도구**입니다. 프로젝트 디렉터리를 분석하고, 파일 구조와 코드 내용을 바탕으로 고품질의 README.md 파일을 자동으로 작성합니다. 이 도구는 다음과 같은 핵심 기능을 제공합니다.
 
-1. **FileViewerAgent** – 프로젝트 파일 구조와 소스 코드를 스캔하여 구조화된 노트를 기록합니다.
-2. **SearchAgent** – 사용된 기술(Python, LlamaIndex 등)에 대한 최신 정보를 웹 검색으로 수집합니다.
-3. **WriteAgent** – 수집된 노트와 외부 정보를 바탕으로 한국어 README를 생성합니다.
-4. **ReviewAgent** – 생성된 README를 검수하고 최종 수정 사항을 제안합니다.
+- **파일 탐색 및 분석**: 프로젝트 루트에서 파일을 탐색하고, 주요 코드와 설정을 추출합니다.
+- **다중 에이전트 워크플로우**: `FileViewerAgent`, `SearchAgent`, `WriteAgent`, `ReviewAgent` 등 여러 에이전트가 순차적으로 협업하여 README를 완성합니다.
+- **다국어 지원**: 현재 한국어와 영어를 기본으로 지원하며, 필요에 따라 다른 언어도 쉽게 추가할 수 있습니다.
+- **예시 코드 자동 삽입**: 프로젝트 사용 예시를 자동으로 생성해 README에 포함합니다.
 
-## 주요 기능
-- 프로젝트 구조 자동 분석
-- 최신 기술 정보 자동 수집
-- 한국어 README 자동 생성
-- 자동 검수 및 피드백 제공
+## 🛠️ 주요 구성 요소
+| 디렉터리/파일 | 역할 |
+|---|---|
+| `agents/` | 각 에이전트(`FileViewerAgent`, `SearchAgent`, `WriteAgent`, `ReviewAgent`) 구현 |
+| `tools/` | 에이전트가 사용하는 도구(`write_readme_tool`, `search_web_tool` 등) |
+| `templates/` | README 템플릿 및 프롬프트 파일 |
+| `main.py` | 프로그램 진입점, 에이전트 파이프라인 실행 |
+| `cli.py` | 커맨드라인 인터페이스 제공 |
+| `requirements.txt` | 프로젝트 의존성 목록 |
+| `README.md` | 현재 파일 (자동 생성 대상) |
 
-## 설치 방법
+## 📦 설치 방법
 ```bash
-# 1. 레포지토리 클론
+# 1. 프로젝트 클론
 git clone https://github.com/yourusername/ReadmeAgent.git
 cd ReadmeAgent
 
-# 2. Python 3.11 이상 가상환경 생성 및 활성화
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+# 2. 가상환경 생성 (권장)
+python -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
 
 # 3. 의존성 설치
 pip install -r requirements.txt
+
+# 4. (선택) 패키지 형태로 설치
+pip install -e .
 ```
 
-## 사용법 (예시 코드)
-아래 예시는 `generate_readme_for_project` 함수를 이용해 특정 프로젝트에 대한 README를 자동으로 생성하고 검수까지 진행하는 방법을 보여줍니다.
+## 🚀 실행 방법 및 예시 코드
+### 1. 기본 사용법 (CLI)
+```bash
+# 프로젝트 루트에서 실행
+python -m ReadmeAgent
+```
+위 명령을 실행하면 `README.md` 파일이 자동으로 생성·업데이트됩니다.
 
+### 2. 파이썬 코드에서 직접 호출
 ```python
-import asyncio
-from pathlib import Path
-from ReadmeAgent.main import generate_readme_for_project
+from ReadmeAgent.main import generate_readme
 
-async def main():
-    project_path = Path("/path/to/your/project")
-    user_requirements = "README는 한국어로 작성하고, 설치/실행 방법을 예시 코드와 함께 꼭 포함해줘."
-    result = await generate_readme_for_project(
-        project_root=str(project_path),
-        user_requirements=user_requirements,
-        existing_readme_path=str(project_path / "README.md"),
-    )
-    print("✅ README 생성 완료")
-    print(result)
+# 프로젝트 루트 경로 지정
+project_root = "/path/to/your/project"
 
-if __name__ == "__main__":
-    asyncio.run(main())
+# README 생성 (기존 파일을 덮어씁니다)
+generate_readme(project_root)
 ```
 
-## 기술 스택
-- **Python 3.11+**
-- **LlamaIndex** – 에이전트와 워크플로우 구현
-- **AsyncIO** – 비동기 흐름 관리
-- **YAML** – 시스템 프롬프트 정의
+## 🧪 테스트 및 검증
+```bash
+# pytest 로 테스트 실행 (테스트 코드가 포함된 경우)
+pytest
+```
 
-## 기여 방법
+## 🤝 기여 방법
 1. Fork 후 새로운 브랜치를 생성합니다.
 2. 기능 추가 또는 버그 수정을 진행합니다.
-3. Pull Request를 열어 리뷰를 요청합니다.
+3. PR을 열어 리뷰를 요청합니다.
 
-## 라이선스
-이 프로젝트는 MIT 라이선스 하에 배포됩니다.
+## 📄 라이선스
+이 프로젝트는 MIT 라이선스 하에 배포됩니다. 자세한 내용은 `LICENSE` 파일을 참고하세요.
 
 ---
-*이 README는 ReadmeAgent가 자동으로 생성한 초안이며, ReviewAgent가 최종 검수를 수행합니다.*
+*이 README는 `WriteAgent`가 자동으로 생성했으며, `ReviewAgent`를 통해 최종 검수를 거쳤습니다.*

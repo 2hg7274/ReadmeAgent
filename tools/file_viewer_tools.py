@@ -18,36 +18,31 @@ EXCLUDED_DIRS = {
 }
 
 def _get_directory_structure(root_path: str) -> Dict[str, Any]:
-    """
-    Recursively scan the directory tree starting at root_path,
-    skipping unnecessary folders such as __pycache__, .git, etc.
-    """
     root = Path(root_path).resolve()
 
     def _walk(dir_path: Path) -> Dict[str, Any]:
         dirs: List[Dict[str, Any]] = []
         files: List[str] = []
+        file_paths: List[str] = []
 
         for p in dir_path.iterdir():
-
-            # ------ ⛔ 불필요한 디렉토리 제외 ------
+            # ⛔ 불필요한 디렉토리 제외
             if p.is_dir() and p.name in EXCLUDED_DIRS:
                 continue
-
-            # 숨김 폴더 자동 제외 (.으로 시작하는 폴더)
             if p.name.startswith(".") and p.is_dir():
                 continue
-            # ------------------------------------
 
             if p.is_dir():
                 dirs.append(_walk(p))
             else:
                 files.append(p.name)
+                file_paths.append(str(p))  # ✅ 각 파일의 full path 저장
 
         return {
             "path": str(dir_path),
             "dirs": dirs,
             "files": files,
+            "file_paths": file_paths,  # ✅ 새로 추가
         }
 
     return _walk(root)
@@ -91,13 +86,17 @@ get_directory_structure = FunctionTool.from_defaults(
     description=(
         "Recursively scan the given directory and return the full folder/file structure, "
         "excluding unnecessary system/cache folders such as '__pycache__', '.git', '.venv', etc.\n\n"
-        "This tool is used by the FileViewerAgent as the FIRST step to understand the overall project layout. "
-        "Hidden folders and typical build/cache folders are automatically ignored so that the agent focuses "
-        "only on meaningful project code.\n\n"
+        "For each directory, the tool returns:\n"
+        "  - 'path': the directory path\n"
+        "  - 'dirs': a list of child directory structures (same schema)\n"
+        "  - 'files': a list of file names directly under that directory\n"
+        "  - 'file_paths': a list of full file paths directly under that directory\n\n"
+        "The 'file_paths' field is intended to make it easy for the FileViewerAgent to call "
+        "`read_file(file_path=...)` on every discovered file, if desired.\n\n"
         "Args:\n"
         "  root_path (str): The directory path to scan.\n\n"
         "Returns:\n"
-        "  dict: A JSON-like mapping containing directories and files discovered under the given path.\n"
+        "  dict: A JSON-like mapping containing directories, local file names, and full file paths.\n"
     ),
 )
 
