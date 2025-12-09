@@ -89,7 +89,7 @@ async def generate_readme_for_project(
     )
 
     # ✅ 여기서는 await 하지 않음 (스트리밍 핸들러를 받기 위함)
-    handler = readme_workflow.run(user_msg=user_msg, ctx=ctx, max_iterations=None)
+    handler = readme_workflow.run(user_msg=user_msg, ctx=ctx, max_iterations=50)
 
     current_agent = None
 

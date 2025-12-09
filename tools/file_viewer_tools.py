@@ -66,6 +66,68 @@ def _read_file(file_path: str, max_chars: int = 8000) -> str:
         return content[:max_chars] + "\n\n[TRUNCATED]"
     return content
 
+def _read_file_chunk(
+    file_path: str,
+    offset: int = 0,
+    max_chars: int = 8000,
+) -> Dict[str, Any]:
+    """
+    Read a slice of the file starting at `offset` with length `max_chars`.
+    Returns both the content slice and the next offset if more content remains.
+    """
+    p = Path(file_path)
+
+    # README.md는 스킵
+    if p.name.lower() == "readme.md":
+        return {
+            "content": "",
+            "skipped": True,
+            "message": "README.md is excluded from FileViewerAgent file reading.",
+            "next_offset": None,
+            "has_more": False,
+        }
+
+    if not p.exists():
+        return {
+            "content": "",
+            "error": f"File not found: {file_path}",
+            "next_offset": None,
+            "has_more": False,
+        }
+
+    try:
+        text = p.read_text(encoding="utf-8", errors="ignore")
+    except Exception as e:
+        return {
+            "content": "",
+            "error": f"Failed to read file {file_path}: {e}",
+            "next_offset": None,
+            "has_more": False,
+        }
+
+    total_len = len(text)
+
+    if offset >= total_len:
+        return {
+            "content": "",
+            "next_offset": None,
+            "has_more": False,
+        }
+
+    end = min(offset + max_chars, total_len)
+    slice_text = text[offset:end]
+
+    has_more = end < total_len
+    next_offset = end if has_more else None
+
+    return {
+        "content": slice_text,
+        "next_offset": next_offset,
+        "has_more": has_more,
+        "length": total_len,
+    }
+
+
 async def _record_notes(ctx: Context, notes: str, notes_title: str = "project_overview") -> str:
     async with ctx.store.edit_state() as ctx_state:
         state = ctx_state["state"]
@@ -76,6 +138,8 @@ async def _record_notes(ctx: Context, notes: str, notes_title: str = "project_ov
         state["file_viewer_notes"][notes_title] = notes
 
     return "Notes successfully recorded."
+
+
 
 
 
@@ -119,6 +183,29 @@ read_file = FunctionTool.from_defaults(
         "  max_chars (int, optional): Maximum characters to return. Defaults to 8000.\n\n"
         "Returns:\n"
         "  str: The text content of the file, a skip message for README.md, or an error message if reading fails.\n"
+    ),
+)
+
+
+read_file_chunk = FunctionTool.from_defaults(
+    fn=_read_file_chunk,
+    name="read_file_chunk",
+    description=(
+        "Read a chunk of a file starting from a given character offset, up to `max_chars` characters.\n\n"
+        "This tool is designed for large files that exceed the size limit of a single LLM context. "
+        "Instead of truncating the file, the agent can call this tool multiple times with increasing "
+        "`offset` values until all relevant parts of the file have been processed.\n\n"
+        "The tool returns a JSON-like structure containing:\n"
+        "  - 'content': the text slice read from the file\n"
+        "  - 'next_offset': the next offset to use for reading the subsequent chunk (or null if no more data)\n"
+        "  - 'has_more': a boolean flag indicating whether more content is available\n"
+        "  - 'length': the total length of the file in characters\n\n"
+        "Args:\n"
+        "  file_path (str): Path to the file to read.\n"
+        "  offset (int, optional): Character offset from which to start reading. Defaults to 0.\n"
+        "  max_chars (int, optional): Maximum number of characters to read in this chunk. Defaults to 8000.\n\n"
+        "Returns:\n"
+        "  dict: A JSON-like object containing the 'content' slice and pagination info.\n"
     ),
 )
 

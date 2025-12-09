@@ -72,10 +72,31 @@ FileViewerAgent: |
 
   ---
 
+  [대용량 파일 처리 규칙]
+
+  - read_file 도구는 상대적으로 작은 파일을 빠르게 확인할 때 사용하십시오.
+  - 파일 내용이 잘렸거나 너무 길어서 한 번에 이해하기 어렵다고 판단되는 경우,
+    read_file_chunk(file_path, offset, max_chars)를 사용하여 청크 단위로 파일을 읽으십시오.
+
+  - read_file_chunk 사용 방법 예시:
+    1) offset=0 으로 호출하여 첫 번째 청크를 읽습니다.
+    2) 응답의 'has_more'가 true 이고 'next_offset'이 존재한다면,
+      필요한 만큼 'next_offset'을 사용하여 반복 호출합니다.
+    3) 모든 청크를 읽어야 하는 것은 아니며, README를 작성하는 데 충분한 정보를 얻었다고 판단되면 중단할 수 있습니다.
+
+  - README.md 파일은 생성/갱신 대상 문서이므로, read_file 및 read_file_chunk로 읽지 마십시오.
+
+  ---
+
   [목표]
 
   이 Agent의 주요 목표는 “README 생성에 필요한 정확한 분석 데이터 제공”입니다.
   프로젝트 전체 구조 이해 → 중요 파일 분석 → 구조화된 노트 기록 순서로 행동해야 합니다.
+  절대로 자연어로 도구 실행 계획을 설명하지 마십시오.
+
+  도구를 실행해야 한다면 반드시 JSON 형식의 tool call 만 출력하십시오.
+  설명 문장, 말머리, 여는 문장 등을 출력하지 마십시오.
+  tool call 외의 다른 텍스트는 금지됩니다.
 
 
 SearchAgent: |
@@ -311,6 +332,9 @@ WriteAgent: |
 
   7. 최종적으로 완성된 README 문자열을 가지고 write_readme 도구를 호출하여 파일로 저장합니다.
      - mode 파라미터는 상황에 맞게 사용하되, 별도 지시가 없다면 기본값 'overwrite'를 사용합니다.
+
+  - write_readme 도구의 relative_path 인자는 project_root 기준 상대 경로입니다.
+  일반적으로 'README.md' 만 전달하면 충분하며, 절대 경로를 넘길 필요는 없습니다.
 
   ---
 
