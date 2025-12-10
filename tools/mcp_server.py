@@ -29,7 +29,7 @@ from tools.review_readme_tool import _review_readme as review_readme_impl
 from tools.search_web_tool import _search_web as search_web_impl
 from utils.mcp_runtime import read_runtime_config
 
-mcp = FastMCP("readme-agent-tools", host="0.0.0.0")
+mcp = FastMCP("readme-agent-tools", host="localhost")
 
 LOGS_DIR = PROJECT_ROOT / "logs"
 NOTES_STORE_PATH = LOGS_DIR / "mcp_notes.json"
@@ -49,7 +49,7 @@ def _load_notes_from_disk() -> None:
 def _persist_notes_to_disk() -> None:
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     NOTES_STORE_PATH.write_text(
-        json.dumps(NOTES_CACHE, indent=2, ensure_ascii=True), encoding="utf-8"
+        json.dumps(NOTES_CACHE, indent=2, ensure_ascii=False), encoding="utf-8"
     )
 
 
