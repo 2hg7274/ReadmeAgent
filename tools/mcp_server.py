@@ -29,7 +29,7 @@ from tools.review_readme_tool import _review_readme as review_readme_impl
 from tools.search_web_tool import _search_web as search_web_impl
 from utils.mcp_runtime import read_runtime_config
 
-mcp = FastMCP("readme-agent-tools", host="localhost")
+mcp = FastMCP("readme-agent-tools", host="0.0.0.0")
 
 LOGS_DIR = PROJECT_ROOT / "logs"
 NOTES_STORE_PATH = LOGS_DIR / "mcp_notes.json"
@@ -173,7 +173,7 @@ def write_readme(
 @mcp.tool(
     name="search_web",
     title="Search Web (Tavily)",
-    description="Proxy to the Tavily async client used by the SearchAgent.",
+    description="Proxy to the Tavily async client for retrieving external technical context.",
 )
 async def search_web(query: str, max_results: int = 5) -> Dict[str, Any]:
     return await search_web_impl(query=query, max_results=max_results)

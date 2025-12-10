@@ -8,7 +8,6 @@ from llama_index.core.workflow import Context
 from workflows.errors import WorkflowRuntimeError
 
 from agents.file_viewer_agent import file_viewer_agent
-from agents.search_agent import search_agent
 from agents.write_agent import write_agent
 from agents.review_agent import review_agent
 from utils.logging_config import setup_logger
@@ -27,7 +26,7 @@ logger = setup_logger(name="readme_agent", log_dir="./logs")
 
 # 워크플로우 정의
 readme_workflow = AgentWorkflow(
-    agents=[file_viewer_agent, search_agent, write_agent, review_agent],
+    agents=[file_viewer_agent, write_agent, review_agent],
     root_agent="FileViewerAgent",
     initial_state={
         "project_root": None,
@@ -107,7 +106,7 @@ async def generate_readme_for_project(
         f"- project_root: {state['project_root']}\n"
         f"- existing_readme_path: {state['existing_readme_path']}\n"
         f"- user_requirements: {state['user_requirements'] or '없음'}\n\n"
-        "FileViewerAgent → SearchAgent → WriteAgent → ReviewAgent 순서로, "
+        "FileViewerAgent → WriteAgent → ReviewAgent 순서로, "
         "필요한 만큼 handoff를 수행해서 최종 완성도 높은 README를 만들어줘."
     )
 

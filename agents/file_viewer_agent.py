@@ -22,5 +22,5 @@ file_viewer_agent = ReActAgent(
     tools=file_viewer_tools,
     system_prompt=agent_system_prompt["FileViewerAgent"],
     llm=file_viewer_llm,
-    can_handoff_to=["SearchAgent", "WriteAgent"],
+    can_handoff_to=["WriteAgent"],
 )
