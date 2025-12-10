@@ -2,7 +2,7 @@ import os
 import yaml
 from llama_index.core.agent.workflow import ReActAgent
 from model import load_llm_model
-from tools.write_readme_tool import write_readme
+from tools.mcp_tool_registry import get_mcp_tools
 
 
 agent_system_prompt_path = os.path.join(
@@ -19,10 +19,12 @@ write_llm = load_llm_model(
     max_tokens=8192,
 )
 
+write_tools = get_mcp_tools(["write_readme"])
+
 write_agent = ReActAgent(
     name="WriteAgent",
     description="Generates or updates the project README using internal analysis notes and external web information.",
-    tools=[write_readme],
+    tools=write_tools,
     system_prompt=agent_system_prompt["WriteAgent"],
     llm=write_llm,
     can_handoff_to=["ReviewAgent"],
